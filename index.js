@@ -1,6 +1,7 @@
 
 (function(global) {
 
+    // parse any data
     var parse = function(data) {
         data = data.replace(/\n/, "");
         // replace spaces with regular space
@@ -15,14 +16,41 @@
         }
     };
 
+    // reformats MMDDYYYY dates to YYYYMMDD
     var parseDate = function(date) {
-      var start = parseInt(date[0] + date[1]);
-      if (start < 13) {
-        return date[4] + date[5] + date[6] + date[7] + date[0] + date[1] + date[2] + date[3];
-      }
-      return date;
+        var start = parseInt(date[0] + date[1]);
+        if (start < 13) {
+            return date[4] + date[5] + date[6] + date[7] + date[0] + date[1] + date[2] + date[3];
+        }
+        return date;
     };
 
+    // splits dates into month, day, and year
+    var splitDate = function(date) {
+        if (date.length == 4) {
+            // format is YYMM
+            return {
+                year: '20' + date[0] + date[1],
+                month: date[2] + date[3],
+                day: undefined
+            }
+        }
+        var start = parseInt(date[0] + date[1]);
+        if (start < 13) {
+            return {
+                year:  date[4] + date[5] + date[6] + date[7],
+                month: date[0] + date[1],
+                day:   date[2] + date[3]
+            }
+        }
+        return {
+            year:  date[0] + date[1] + date[2] + date[3],
+            month: date[4] + date[5],
+            day:   date[6] + date[7]
+        }
+    };
+
+    // parse magstripe data
     var stripe = function(data) {
         data = data.replace(/\n/, "");
         // replace spaces with regular space
@@ -49,19 +77,19 @@
             "dl": res2[3],
             "expiration_date": parseDate(res2[5]),
             "birthday": function() {
-              var dob = res2[6].match(/(\d{4})(\d{2})(\d{2})/);
-              if (!dob) return;
+                var dob = res2[6].match(/(\d{4})(\d{2})(\d{2})/);
+                if (!dob) return;
 
-              if (dob[2] === '99') {
-                  /* FL decided to reverse 2012 aamva spec, 99 means here
-                      that dob month === to expiration month, it should be
-                      opposite
-                      */
-                  var exp_dt = res2[5].match(/(\d{2})(\d{2})/);
-                  dob[2] = exp_dt[2];
-              }
-              //dob[2]--; what was this for?
-              return dob[1] + dob[2] + dob[3];
+                if (dob[2] === '99') {
+                    /* FL decided to reverse 2012 aamva spec, 99 means here
+                        that dob month === to expiration month, it should be
+                        opposite
+                        */
+                    var exp_dt = res2[5].match(/(\d{2})(\d{2})/);
+                    dob[2] = exp_dt[2];
+                }
+                //dob[2]--; what was this for?
+                return dob[1] + dob[2] + dob[3];
             }(),
             "dl_overflow": res2[7],
             "cds_version": res3[1],
@@ -106,23 +134,35 @@
         };
     };
 
+    // determines the version of the pdf417 data
+    var pdf417version = function(data) {
+        data = data.replace(/\n/, "");
+        // replace spaces with regular space
+        data = data.replace(/\s/g, " ");
+
+        if ( /^@/.test(data) === true ) {
+            // get version of aamva
+            var version = data.match(/[A-Z ]{5}\d{6}(\d{2})/);
+            return version[1];
+        }
+        return 0;
+    };
+
+    // parses pdf417 data
     var pdf417 = function(data) {
         data = data.replace(/\n/, "");
         // replace spaces with regular space
         data = data.replace(/\s/g, " ");
 
-        // get version of aamva (before 2000 or after)
+        // get version of aamva
         var version = data.match(/[A-Z ]{5}\d{6}(\d{2})/);
-
-
 
         var parseRegex;
 
         /* version 01 year 2000 */
         switch (Number(version[1])) {
-          case 1: {
-              parseRegex = new RegExp(
-                  '(DAQ.*?)?' + // Drivers license number
+            case 1: {
+                parseRegex = new RegExp(
                   '(DAA.*?)?' + // Driver License Name
                   '(DAG.*?)?' + // Driver Mailing Street Address
                   '(DAI.*?)?' + // Driver Mailing City
@@ -177,29 +217,25 @@
                   '(DBS.*?)?'   // Driver "AKA" Prefix
                   */
                   '$'
-              );
-            break;
-          }
+                );
+                break;
+            }
           /* version 02 year 2003 */
-          case 2: {
-              parseRegex = new RegExp(
+            case 2: {
+                parseRegex = new RegExp(
                   '(DCA.*?)?' + // Jurisdiction-specific vehicle class
                   '(DCB.*?)?' + // Jurisdiction-specific restriction codes
                   '(DCD.*?)?' + // Jurisdiction-specific endorsement codes
                   '(DBA.*?)?' + // Document Expiration Date
                   '(DCS.*?)?' + // Customer Family Name
-
                   '(DCT.*?)?' + // Customer Given Names
-
                   '(DCU.*?)?' + // Name Suffix
                   '(DBD.*?)?' + // Document Issue Date
                   '(DBB.*?)?' + // Date of Birth
-
                   '(DBC.*?)?' + // Physical Description – Sex
                   '(DAY.*?)?' + // Physical Description – Eye Color
                   '(DAU.*?)?' + // Physical Description – Height
                   '(DCE.*?)?' + // Physical Description – Weight Range
-
                   '(DAG.*?)?' + // Address – Street 1
                   '(DAI.*?)?' + // Address – City
                   '(DAJ.*?)?' + // Address – Jurisdiction Code
@@ -208,7 +244,6 @@
                   '(DCF.*?)?' + // Document Discriminator
                   '(DCG.*?)?' + // Country Identification
                   '(DCH.*?)?' + // Federal Commercial Vehicle Codes
-
                   /* optional elements
                   '(DAH.*?)?' + // Address – Street 2
                   '(DAZ.*?)?' + // Hair color
@@ -217,7 +252,6 @@
                   '(DCK.*?)?' + // Inventory control number
                   '(DBN.*?)?' + // Alias / AKA Family Name
                   '(DCL.*?)?' + // Race / ethnicity
-
                   '(DCM.*?)?' + // Standard vehicle classification
                   '(DCN.*?)?' + // Standard endorsement code
                   '(DCO.*?)?' + // Standard restriction code
@@ -226,12 +260,12 @@
                   '(DCR.*?)?'  // Jurisdiction- specific restriction code description
                   */
                   '$'
-              );
-              break;
-          }
+                );
+                break;
+            }
           /* version 03 year 2005 */
-          case 3: {
-              parseRegex = new RegExp(
+            case 3: {
+                parseRegex = new RegExp(
                   '(DCA.*?)?' + // Jurisdiction-specific vehicle class
                   '(DCB.*?)?' + // Jurisdiction-specific restriction codes
                   '(DCD.*?)?' + // Jurisdiction-specific endorsement codes
@@ -271,40 +305,185 @@
                   '(DCR.*?)?'  // Jurisdiction- specific restriction code description
                   */
                   '$'
-              );
-              break;
-          }
-          case 6: {
-            parseRegex = new RegExp(
-              '(DAQ.*?)?' +
-              '(DCS.*?)?' +
-              '(DDE.*?)?' +
-              '(DAC.*?)?' +
-              '(DDF.*?)?' +
-              '(DAD.*?)?' +
-              '(DDG.*?)?' +
-              '(DCA.*?)?' +
-              '(DCB.*?)?' +
-              '(DCD.*?)?' +
-              '(DBD.*?)?' +
-              '(DBB.*?)?' +
-              '(DBA.*?)?' +
-              '(DBC.*?)?' +
-              '(DAU.*?)?' +
-              '(DAY.*?)?' +
-              '(DAG.*?)?' +
-              '(DAI.*?)?' +
-              '(DAJ.*?)?' +
-              '(DAK.*?)?' +
-              '(DCF.*?)?' +
-              /* optional */
-              '$'
-            );
-            break;
-          }
+                );
+                break;
+            }
+          /* version 04 year 2009 */
+            case 4: {
+                parseRegex = new RegExp(
+                  '(DCA.*?)?' + // Jurisdiction-specific vehicle class
+                  '(DCB.*?)?' + // Jurisdiction-specific restriction codes
+                  '(DCD.*?)?' + // Jurisdiction-specific endorsement codes
+                  '(DBA.*?)?' + // Document Expiration Date
+                  '(DCS.*?)?' + // Customer Family Name
+                  '(DAC.*?)?' + // Customer First Name
+                  '(DAD.*?)?' + // Customer Middle Name(s)
+                  '(DBD.*?)?' + // Document Issue Date
+                  '(DBB.*?)?' + // Date of Birth
+                  '(DBC.*?)?' + // Physical Description – Sex
+                  '(DAY.*?)?' + // Physical Description – Eye Color
+                  '(DAU.*?)?' + // Physical Description – Height
+                  '(DAG.*?)?' + // Address – Street 1
+                  '(DAI.*?)?' + // Address – City
+                  '(DAJ.*?)?' + // Address – Jurisdiction Code
+                  '(DAK.*?)?' + // Address – Postal Code
+                  '(DAQ.*?)?' + // Customer ID Number
+                  '(DCF.*?)?' + // Document Discriminator
+                  '(DCG.*?)?' + // Country Identification
+                  '(DDE.*?)?' + // Family name truncation
+                  '(DDF.*?)?' + // First name truncation
+                  '(DDG.*?)?' + // Middle name truncation
+                  /* optional elements
+                  '(DAH.*?)?' + // Address – Street 2
+                  '(DAZ.*?)?' + // Hair color
+                  '(DCI.*?)?' + // Place of birth
+                  '(DCJ.*?)?' + // Audit information
+                  '(DCK.*?)?' + // Inventory control number
+                  '(DBN.*?)?' + // Alias / AKA Family Name
+                  '(DBG.*?)?' + // Alias / AKA Given Name
+                  '(DBS.*?)?' + // Alias / AKA Suffix Name
+                  '(DCU.*?)?' + // Name Suffix
+                  '(DCE.*?)?' + // Physical Description – Weight Range
+                  '(DCL.*?)?' + // Race / ethnicity
+                  '(DCM.*?)?' + // Standard vehicle classification
+                  '(DCN.*?)?' + // Standard endorsement code
+                  '(DCO.*?)?' + // Standard restriction code
+                  '(DCP.*?)?' + // Jurisdiction- specific vehicle classification description
+                  '(DCQ.*?)?' + // Jurisdiction- specific endorsement code description
+                  '(DCR.*?)?' + // Jurisdiction- specific restriction code description
+                  '(DDA.*?)?' + // Compliance Type
+                  '(DDB.*?)?' + // Card Revision Date
+                  '(DDC.*?)?' + // HAZMAT Endorsement Expiration Date
+                  '(DDD.*?)?' + // Limited Duration Document Indicator
+                  '(DAW.*?)?' + // Weight (pounds)
+                  '(DAX.*?)?'   // Weight (kilograms)
+                  */
+                  '$'
+                );
+                break;
+            }
+          /* version 05 year 2010 */
+            case 5: {
+                parseRegex = new RegExp(
+                  '(DCA.*?)?' + // Jurisdiction-specific vehicle class
+                  '(DCB.*?)?' + // Jurisdiction-specific restriction codes
+                  '(DCD.*?)?' + // Jurisdiction-specific endorsement codes
+                  '(DBA.*?)?' + // Document Expiration Date
+                  '(DCS.*?)?' + // Customer Family Name
+                  '(DAC.*?)?' + // Customer First Name
+                  '(DAD.*?)?' + // Customer Middle Name(s)
+                  '(DBD.*?)?' + // Document Issue Date
+                  '(DBB.*?)?' + // Date of Birth
+                  '(DBC.*?)?' + // Physical Description – Sex
+                  '(DAY.*?)?' + // Physical Description – Eye Color
+                  '(DAU.*?)?' + // Physical Description – Height
+                  '(DAG.*?)?' + // Address – Street 1
+                  '(DAI.*?)?' + // Address – City
+                  '(DAJ.*?)?' + // Address – Jurisdiction Code
+                  '(DAK.*?)?' + // Address – Postal Code
+                  '(DAQ.*?)?' + // Customer ID Number
+                  '(DCF.*?)?' + // Document Discriminator
+                  '(DCG.*?)?' + // Country Identification
+                  '(DDE.*?)?' + // Family name truncation
+                  '(DDF.*?)?' + // First name truncation
+                  '(DDG.*?)?' + // Middle name truncation
+                  /* optional elements
+                  '(DAH.*?)?' + // Address – Street 2
+                  '(DAZ.*?)?' + // Hair color
+                  '(DCI.*?)?' + // Place of birth
+                  '(DCJ.*?)?' + // Audit information
+                  '(DCK.*?)?' + // Inventory control number
+                  '(DBN.*?)?' + // Alias / AKA Family Name
+                  '(DBG.*?)?' + // Alias / AKA Given Name
+                  '(DBS.*?)?' + // Alias / AKA Suffix Name
+                  '(DCU.*?)?' + // Name Suffix
+                  '(DCE.*?)?' + // Physical Description – Weight Range
+                  '(DCL.*?)?' + // Race / ethnicity
+                  '(DCM.*?)?' + // Standard vehicle classification
+                  '(DCN.*?)?' + // Standard endorsement code
+                  '(DCO.*?)?' + // Standard restriction code
+                  '(DCP.*?)?' + // Jurisdiction- specific vehicle classification description
+                  '(DCQ.*?)?' + // Jurisdiction- specific endorsement code description
+                  '(DCR.*?)?' + // Jurisdiction- specific restriction code description
+                  '(DDA.*?)?' + // Compliance Type
+                  '(DDB.*?)?' + // Card Revision Date
+                  '(DDC.*?)?' + // HAZMAT Endorsement Expiration Date
+                  '(DDD.*?)?' + // Limited Duration Document Indicator
+                  '(DAW.*?)?' + // Weight (pounds)
+                  '(DAX.*?)?' + // Weight (kilograms)
+                  '(DDH.*?)?' + // Under 18 Until
+                  '(DDI.*?)?' + // Under 19 Until
+                  '(DDJ.*?)?'   // Under 21 Until
+                  */
+                  '$'
+                );
+                break;
+            }
+          /* version 06 year 2011 */
+            case 6: {
+                parseRegex = new RegExp(
+                  '(DCA.*?)?' + // Jurisdiction-specific vehicle class
+                  '(DCB.*?)?' + // Jurisdiction-specific restriction codes
+                  '(DCD.*?)?' + // Jurisdiction-specific endorsement codes
+                  '(DBA.*?)?' + // Document Expiration Date
+                  '(DCS.*?)?' + // Customer Family Name
+                  '(DAC.*?)?' + // Customer First Name
+                  '(DAD.*?)?' + // Customer Middle Name(s)
+                  '(DBD.*?)?' + // Document Issue Date
+                  '(DBB.*?)?' + // Date of Birth
+                  '(DBC.*?)?' + // Physical Description – Sex
+                  '(DAY.*?)?' + // Physical Description – Eye Color
+                  '(DAU.*?)?' + // Physical Description – Height
+                  '(DAG.*?)?' + // Address – Street 1
+                  '(DAI.*?)?' + // Address – City
+                  '(DAJ.*?)?' + // Address – Jurisdiction Code
+                  '(DAK.*?)?' + // Address – Postal Code
+                  '(DAQ.*?)?' + // Customer ID Number
+                  '(DCF.*?)?' + // Document Discriminator
+                  '(DCG.*?)?' + // Country Identification
+                  '(DDE.*?)?' + // Family name truncation
+                  '(DDF.*?)?' + // First name truncation
+                  '(DDG.*?)?' + // Middle name truncation
+                  /* optional elements
+                  '(DAH.*?)?' + // Address – Street 2
+                  '(DAZ.*?)?' + // Hair color
+                  '(DCI.*?)?' + // Place of birth
+                  '(DCJ.*?)?' + // Audit information
+                  '(DCK.*?)?' + // Inventory control number
+                  '(DBN.*?)?' + // Alias / AKA Family Name
+                  '(DBG.*?)?' + // Alias / AKA Given Name
+                  '(DBS.*?)?' + // Alias / AKA Suffix Name
+                  '(DCU.*?)?' + // Name Suffix
+                  '(DCE.*?)?' + // Physical Description – Weight Range
+                  '(DCL.*?)?' + // Race / ethnicity
+                  '(DCM.*?)?' + // Standard vehicle classification
+                  '(DCN.*?)?' + // Standard endorsement code
+                  '(DCO.*?)?' + // Standard restriction code
+                  '(DCP.*?)?' + // Jurisdiction- specific vehicle classification description
+                  '(DCQ.*?)?' + // Jurisdiction- specific endorsement code description
+                  '(DCR.*?)?' + // Jurisdiction- specific restriction code description
+                  '(DDA.*?)?' + // Compliance Type
+                  '(DDB.*?)?' + // Card Revision Date
+                  '(DDC.*?)?' + // HAZMAT Endorsement Expiration Date
+                  '(DDD.*?)?' + // Limited Duration Document Indicator
+                  '(DAW.*?)?' + // Weight (pounds)
+                  '(DAX.*?)?' + // Weight (kilograms)
+                  '(DDH.*?)?' + // Under 18 Until
+                  '(DDI.*?)?' + // Under 19 Until
+                  '(DDJ.*?)?' + // Under 21 Until
+                  '(DDK.*?)?'   // Organ Donor Indicator
+                  */
+                  '$'
+                );
+                break;
+            }
           /* version 07 year 2012 */
-          case 7: {
-              parseRegex = new RegExp(
+          /* version 08 year 2013 */
+          /* version 09 year 2016 */
+            case 7:
+            case 8:
+            case 9: {
+                parseRegex = new RegExp(
                   '(DCA.*?)?' + // Jurisdiction-specific vehicle class
                   '(DCB.*?)?' + // Jurisdiction-specific restriction codes
                   '(DCD.*?)?' + // Jurisdiction-specific endorsement codes
@@ -358,87 +537,13 @@
                   '(DDL.*?)?'   // Veteran Indicator
                   */
                   '$'
-              );
-              break;
-          }
-          case 8:
-          case 9: {
-            var prefixes = [
-                'DCA', // jurisdiction vehicle class
-                'DCB', // jurisdiction restriction codes
-                'DCD', // jurisdiction endorsement codes
-                'DBA', // doc. expiration date
-                'DCS', // customer family name
-                'DAC', // first name
-                'DAD', // middle names (comma seperated)
-                'DBD', // doc. issue date
-                'DBB', // date of birth (MMDDCCYY for U.S., CCYYMMDD for Canada)
-                'DBC', // gender (1-name, 2-female, 9-not specified)
-                'DAY', // eye color (ansi d-20 codes)
-                'DAU', // height
-                'DAG', // street 1
-                'DAI', // city
-                'DAJ', // state
-                'DAK', // zip
-                'DAQ', // customer id number
-                'DCF', // doc. distriminator
-                'DCG', // country identification (USA/CAN)
-                'DDE', // last name truncated (T-trucated, N-not, U-unknown)
-                'DDF', // first name truncated (T-trucated, N-not, U-unknown)
-                'DDG', // middle name truncated (T-trucated, N-not, U-unknown)
-                // optionals
-                'DAH', // street address line 2
-                'DAZ', // hair color
-                'DCI', // place of birth
-                'DCJ', // audit info
-                'DCK', // inventory control number
-                'DBN', // alias last name
-                'DBG', // alias first name
-                'DBS', // aliast suffix name
-                'DCU', // name suffix . (JR, SR, 1ST, 2ND...)
-                'DCE', // weight range
-                'DCL', // race / ethnicity (AAMVA D20 code)
-                'DCM', // vehicle classification
-                'DCN', // standard endorsement code
-                'DCO', // standard restriction code
-                'DCP', // vehicle classification description
-                'DCQ', // endorsement code description
-                'DCR', // restriction code description
-                'DDA', // compliance type
-                'DDB', // card revision date
-                'DDC', // hazmat endorsement exp. date
-                'DDD', // limited duration doc. indicator
-                'DAW', // weight lbs
-                'DAX', // weight kg
-                'DDH', // under 18 until, date turns 18 (MMDDCCYY for U.S., CCYYMMDD for Canada)
-                'DDI', // under 19 until, date turns 19 (MMDDCCYY for U.S., CCYYMMDD for Canada)
-                'DDJ', // under 21 until, date turns 21 (MMDDCCYY for U.S., CCYYMMDD for Canada)
-                'DDK', // organ donor (1-yes)
-                'DDL' // veteran indicator (1-yes)
-            ];
-            var regExStr = '';
-            var prefixIdxs = [];
-            for (var i = 0; i < prefixes.length; i++) {
-                var idx = data.indexOf(prefixes[i]);
-                if (idx !== -1) {
-                    prefixIdxs.push({
-                        prefix: prefixes[i],
-                        index: idx
-                    });
-                }
+                );
+                break;
             }
-            // if prefixes are not in order as found in the string, the regex will not perform as expected
-            prefixIdxs.sort((a,b) => (a.index > b.index) ? 1 : -1);
-            prefixIdxs.forEach(obj => regExStr += `(${obj.prefix}.*?)?`);
-            regExStr += '$';
-
-            parseRegex = new RegExp(regExStr);
-            break;
-          }
-          default: {
-              console.log('unable to get version', version);
-              // probably not a right parse...
-          }
+            default: {
+                console.log('unable to get version', version);
+                // probably not a right parse...
+            }
         }
 
         var parsedData = {};
@@ -463,9 +568,9 @@
 
                 // date on 01 is CCYYMMDD while on 07 MMDDCCYY
                 parsedData.DBB = (
-                    parsedData.DBB.substring(4,6) +  // month
-                    parsedData.DBB.substring(6,8) +  // day
-                    parsedData.DBB.substring(0,4)    // year
+                  parsedData.DBB.substring(4,6) +  // month
+                  parsedData.DBB.substring(6,8) +  // day
+                  parsedData.DBB.substring(0,4)    // year
                 );
                 break;
             }
@@ -497,10 +602,10 @@
             "dl": parsedData.DAQ,
             "expiration_date": parseDate(parsedData.DBA),
             "birthday": function() {
-              if (!parsedData.DBB) return;
-              var match = parsedData.DBB.match(/(\d{2})(\d{2})(\d{4})/);
-              if (!match) return;
-              return match[3] + match[1] + match[2];
+                if (!parsedData.DBB) return;
+                var match = parsedData.DBB.match(/(\d{2})(\d{2})(\d{4})/);
+                if (!match) return;
+                return match[3] + match[1] + match[2];
             }(),
             "dl_overflow": undefined,
             "cds_version": undefined,
@@ -520,9 +625,9 @@
                         break;
                     default:
                         if (parsedData.DBC[0] === 'M') {
-                          return 'MALE';
+                            return 'MALE';
                         } else if (parsedData.DBC[0] === 'F') {
-                          return 'FEMALE';
+                            return 'FEMALE';
                         }
                         return "MISSING/INVALID";
                         break;
@@ -542,10 +647,10 @@
         return rawData;
     };
 
-
-
-  global.parse = parse;
-  global.stripe = stripe;
-  global.pdf417 = pdf417;
+    global.parse = parse;
+    global.stripe = stripe;
+    global.pdf417 = pdf417;
+    global.pdf417version = pdf417version;
+    global.splitDate = splitDate;
 
 }(this));
